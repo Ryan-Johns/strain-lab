@@ -1,4 +1,4 @@
-# Strain Gauge Filtering Lab — V53
+# Strain Gauge Filtering Lab — V54
 
 ## Run it
 
@@ -18,6 +18,11 @@ Your data is saved in `strain_lab_data` inside this folder (change it at the top
 
 See **HOSTING.md**: the app runs free on Streamlit Community Cloud and keeps its data in a private Hugging Face
 dataset. Everyone who signs in with the password works on the same data.
+
+- **💾 Save now** (sidebar): saves anything waiting and checks the online copy against yours. Changes are also saved
+  automatically a few seconds after you make them.
+- **🔒 Lock the app** (sidebar): while locked, only you can use the app (e.g. for batch processing); others see a
+  "please wait" screen. Unlocks itself after the time you choose; others can unlock it from that screen if needed.
 
 ## The five pages
 
@@ -87,6 +92,7 @@ recording. Built one channel at a time, so large selections don't run out of mem
 | `strain_lab/io_utils.py` | CSV/ZIP reading, location/date from names |
 | `strain_lab/cloud.py` | Mirrors the data store to a private Hugging Face dataset (online version) |
 | `strain_lab/auth.py` | Sign-in for the online version |
+| `strain_lab/applock.py` | Lock the app for one person (online version) |
 | `strain_lab/ui.py` | Shared Streamlit pieces (settings form, caches) |
 | `strain_lab/pages/` | One file per page |
 | `tests/` | `python -m tests.test_equivalence <csv>` (vs V46), `tests.test_store <csv>`, `tests.test_pages <csv>` |

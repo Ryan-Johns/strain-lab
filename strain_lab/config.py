@@ -1,6 +1,6 @@
 """Constants shared across the app: option lists, colors and default presets."""
 
-APP_TITLE = "Strain Gauge Filtering Lab — V53"
+APP_TITLE = "Strain Gauge Filtering Lab — V54"
 DEFAULT_FS = 200.0
 
 FILTER_TYPES = ["Low-pass Butterworth", "High-pass Butterworth", "Band-pass Butterworth"]
@@ -14,7 +14,7 @@ BL_DPLOT = "DPlot Integrated (legacy)"
 BL_DPLOT_SHIFTED = "DPlot Integrated + Shifted (legacy)"
 BASELINE_MODES = [BL_NONE, BL_ZERO_START, BL_QUIET, BL_DPLOT, BL_DPLOT_SHIFTED]
 INTEGRATED_MODES = {BL_DPLOT, BL_DPLOT_SHIFTED}
-# Names used by V46–V53 presets and saved runs.
+# Names used by V46–V54 presets and saved runs.
 LEGACY_BASELINE_NAMES = {"DPlot constant shift (quiet window)": BL_QUIET, "DPlot Integrated": BL_DPLOT,
                          "DPlot Integrated + Shifted": BL_DPLOT_SHIFTED}
 

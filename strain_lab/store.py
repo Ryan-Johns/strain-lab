@@ -21,6 +21,7 @@ Hooks (set by strain_lab.cloud when the store is mirrored to Hugging Face):
 import json
 import os
 import threading
+import time
 import uuid
 from contextlib import contextmanager
 from datetime import datetime
@@ -96,6 +97,7 @@ class DataStore:
         self.hidden_points: List[list] = cat.get("hidden_points", [])
         self.kept_points: List[list] = cat.get("kept_points", [])
         self.presets: Dict[str, dict] = cat.get("presets", {})
+        self.app_lock: dict = cat.get("app_lock", {})   # {"by", "key", "until", "note"}: one person has the app
 
     def reload(self):
         """Re-read the catalog (pick up changes made by other people)."""
@@ -103,7 +105,8 @@ class DataStore:
 
     def _write_catalog(self):
         cat = {"version": 1, "records": self.records, "runs": self.runs, "gauge_types": self.gauge_types,
-               "hidden_points": self.hidden_points, "kept_points": self.kept_points, "presets": self.presets}
+               "hidden_points": self.hidden_points, "kept_points": self.kept_points, "presets": self.presets,
+               "app_lock": self.app_lock}
         tmp = self.catalog_path.with_suffix(".tmp")
         tmp.write_text(json.dumps(cat, indent=1, default=str))
         os.replace(tmp, self.catalog_path)        # atomic: never leaves a half-written catalog
@@ -243,6 +246,27 @@ class DataStore:
     def delete_preset(self, name: str):
         with self.transaction():
             self.presets.pop(name, None)
+
+    # ------------------------------------------------------------------ app lock
+    def current_lock(self, now: Optional[float] = None) -> dict:
+        """The app lock if one is held and hasn't run out, else {}."""
+        lk = self.app_lock or {}
+        return lk if lk and float(lk.get("until", 0)) > (time.time() if now is None else now) else {}
+
+    def take_lock(self, by: str, key: str, minutes: float, note: str = "") -> dict:
+        """Lock the app for `minutes`. Returns the lock now in force (someone else's if they got there first)."""
+        with self.transaction():
+            cur = self.current_lock()
+            if cur and cur.get("key") != key:
+                return cur
+            self.app_lock = {"by": by, "key": key, "until": time.time() + 60 * float(minutes), "note": note}
+            return self.app_lock
+
+    def release_lock(self, key: Optional[str] = None):
+        """Unlock. With a key, only if that key holds the lock; without one, unlock regardless."""
+        with self.transaction():
+            if key is None or (self.app_lock or {}).get("key") == key:
+                self.app_lock = {}
 
     def set_gauge_types(self, overrides: Dict[str, str]):
         with self.transaction():

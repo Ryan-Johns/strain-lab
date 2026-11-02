@@ -284,8 +284,14 @@ def get_store():
     return DataStore(root)
 
 
+def _ago(ts) -> str:
+    import time
+    s = max(0, int(time.time() - ts))
+    return "just now" if s < 60 else f"{s // 60} min ago" if s < 3600 else f"{s // 3600} h ago"
+
+
 def sync_status():
-    """Sidebar line showing whether online changes have been saved."""
+    """Sidebar: whether changes are saved online, plus a Save now button that also checks the online copy."""
     from . import cloud
     m = cloud._MIRROR
     if m is None:
@@ -295,11 +301,21 @@ def sync_status():
     elif m.pending:
         st.sidebar.caption(f"⏳ Saving {m.pending} change(s) online…")
     else:
-        st.sidebar.caption("✅ All changes saved online" + (f" (last at {m.last_push})" if m.last_push else ""))
-    if m.pending and st.sidebar.button("Save online now", key="sync_now"):
-        with st.spinner("Saving…"):
-            m.flush()
-        st.rerun()
+        st.sidebar.caption("✅ All changes saved online" + (f" (last {_ago(m.last_push_ts)})" if m.last_push_ts else ""))
+    if st.sidebar.button("💾 Save now", key="sync_now", use_container_width=True,
+                         help="Saves anything waiting and then checks the online copy against yours. "
+                              "Your work is also saved automatically a few seconds after each change."):
+        with st.spinner("Saving and checking the online copy…"):
+            try:
+                ok, msg = m.verify()
+            except Exception as e:
+                ok, msg = False, f"Couldn't reach Hugging Face to check ({type(e).__name__}). Try again in a minute."
+        st.session_state["save_check"] = (ok, msg)
+    res = st.session_state.pop("save_check", None)
+    if res:
+        (st.sidebar.success if res[0] else st.sidebar.warning)(res[1])
+    st.sidebar.caption("Saved online: data-store files, temperatures, runs, presets, hidden points. "
+                       "Not saved: the session library and plot settings.")
 
 
 # ----------------------------------------------------------------------------- raw sources (uploads)

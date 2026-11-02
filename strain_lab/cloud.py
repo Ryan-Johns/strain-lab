@@ -61,6 +61,7 @@ class CloudMirror:
         self._stop = False
         self.last_push: Optional[str] = None
         self.last_error: Optional[str] = None
+        self.last_push_ts: Optional[float] = None
         self.commits = 0
 
     # ------------------------------------------------------------------ start-up
@@ -130,9 +131,41 @@ class CloudMirror:
             return False
         self._remote = (self._remote | added) - deleted
         self.last_push = datetime.now().strftime("%H:%M:%S")
+        self.last_push_ts = time.time()
         self.last_error = None
         self.commits += 1
         return True
+
+    def verify(self):
+        """Push anything waiting, then check the online copy against this one.
+
+        Returns (ok, message). Checks that the online catalog is byte-for-byte the same as the local one and
+        that every raw and filtered file the catalog refers to is online."""
+        import json
+        import tempfile
+        if not self.flush():
+            return False, f"Couldn't save online yet ({self.last_error}). It keeps retrying automatically."
+        if self.pending:
+            return False, "More changes came in while saving; press Save now again in a few seconds."
+        local = self.root / "catalog.json"
+        if not local.exists():
+            return True, "Nothing saved yet."
+        remote = set(self.api.list_repo_files(self.repo_id, repo_type="dataset"))
+        self._remote = remote
+        with tempfile.TemporaryDirectory() as tmp:
+            self.api.hf_hub_download(self.repo_id, "catalog.json", repo_type="dataset", local_dir=tmp)
+            same = (Path(tmp) / "catalog.json").read_bytes() == local.read_bytes()
+        cat = json.loads(local.read_text())
+        files = [r.get("path") for r in cat.get("records", [])] + [r.get("path") for r in cat.get("runs", [])]
+        missing = [f for f in files if f and f not in remote]
+        if not same:
+            return False, "The online catalog doesn't match yet; press Save now again in a few seconds."
+        if missing:
+            for f in missing:
+                self._mark(f)
+            return False, f"{len(missing)} file(s) weren't online yet; they're being uploaded now."
+        return True, f"Checked: all {len(cat.get('records', []))} recordings, {len(cat.get('runs', []))} runs and " \
+                     "every edit are saved online."
 
     def _worker(self):
         backoff = 0.0
