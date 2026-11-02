@@ -25,33 +25,68 @@ def import_source(store, src: RawSource, location: str, date: str, time_col: str
     return rec
 
 
+def release_memory():
+    """Hand freed memory back to the system (matters on the 2.7 GB online server)."""
+    import gc
+    gc.collect()
+    try:
+        import pyarrow as pa
+        pa.default_memory_pool().release_unused()
+    except Exception:
+        pass
+    try:
+        import ctypes
+        ctypes.CDLL("libc.so.6").malloc_trim(0)
+    except Exception:
+        pass
+
+
 def filter_record(store, rid: str, channels: Optional[List[str]], s: FilterSettings, name: str,
                   make_active=True, replace=True, by=""):
-    """Filter a stored record's channels and save the result as a run. Returns (run or None, log rows)."""
+    """Filter a stored record's channels and save the result as a run. Returns (run or None, log rows).
+
+    Works one channel at a time and keeps each result in its stored (integer) form, so memory stays low
+    however many channels a recording has. Statistics are computed from those same stored values."""
+    from .baseline import compute_stats
+    from .store import QUANTUM
     store.reload()
     rec = next((r for r in store.records if r["id"] == rid), None)
     if rec is None:
         raise ValueError("This recording was deleted (possibly by someone else).")
     use = [c for c in (channels or rec["channels"]) if c in rec["channels"]]
     try:
-        t, raw = store.load_raw(rid, use)
+        t, _ = store.load_raw(rid, [])
     except FileNotFoundError:
         raise ValueError("This recording was deleted (possibly by someone else).") from None
-    results, log = {}, []
+    settings = s.to_preset() | {"quiet_start": s.quiet_start, "quiet_end": s.quiet_end}
+    t_run = store.run_time({"settings": settings}, t)
+    windows = sorted(set(store.stats()["window_s"].astype(float))) or [10.0]
+    n = len(t)
+    results, stats, log = {}, [], []
     for ch in use:
         try:
+            _, raw = store.load_raw(rid, [ch])
             r = process_trace(t, raw[ch].to_numpy(float), s)
-            results[ch] = store.run_entry(r)      # keep only what the run stores
+            del raw
+            results[ch] = store.compact_entry(r, n)
+            trim = r.trim_used
+            del r
+            y = results[ch]["q"].to_numpy(dtype=float, na_value=np.nan) * QUANTUM   # exactly what is stored
+            one = pd.DataFrame({ch: y})
+            stats += [compute_stats(t_run, one, w).assign(window_s=float(w)) for w in windows]
+            del y, one
             log.append(dict(record=store.record_label(rec), channel=ch,
-                            status="ok" if not r.trim_used else f"ok, auto-trimmed {r.trim_used:.3g} s"))
+                            status="ok" if not trim else f"ok, auto-trimmed {trim:.3g} s"))
         except Exception as e:
             log.append(dict(record=store.record_label(rec), channel=ch, status=f"failed: {e}"))
     if not results:
         return None, log
-    settings = s.to_preset() | {"quiet_start": s.quiet_start, "quiet_end": s.quiet_end}
     run = store.save_run(rid, name, settings, results, make_active=make_active, replace_same_name=replace, by=by)
-    windows = sorted(set(store.stats()["window_s"].astype(float))) or [10.0]
-    store.put_stats(pd.concat([stats_rows(store, rec, run, w) for w in windows], ignore_index=True))
+    del results
+    if stats:
+        store.put_stats(pd.concat(stats, ignore_index=True).assign(
+            record_id=rec["id"], basis=run["id"], source="computed"))
+    release_memory()
     return run, log
 
 

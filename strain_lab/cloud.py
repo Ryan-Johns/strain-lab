@@ -156,7 +156,7 @@ class CloudMirror:
             self.api.hf_hub_download(self.repo_id, "catalog.json", repo_type="dataset", local_dir=tmp)
             same = (Path(tmp) / "catalog.json").read_bytes() == local.read_bytes()
         cat = json.loads(local.read_text())
-        files = [r.get("path") for r in cat.get("records", [])] + [r.get("path") for r in cat.get("runs", [])]
+        files = [r.get("raw_file") for r in cat.get("records", [])] + [r.get("file") for r in cat.get("runs", [])]
         missing = [f for f in files if f and f not in remote]
         if not same:
             return False, "The online catalog doesn't match yet; press Save now again in a few seconds."

@@ -315,6 +315,14 @@ class DataStore:
             raw_offset=float(np.nanmean(res.y_raw - res.y_raw_corrected)),
             filtered_offset=float(np.nanmean(res.y_filtered - res.y_filtered_corrected))))
 
+    def compact_entry(self, res: TraceResult, n: int) -> dict:
+        """run_entry, already in stored form (0.001 µε integers, full length): ~6× smaller than float arrays."""
+        e = self.run_entry(res)
+        y = e["y"]
+        a = np.full(n, np.nan)
+        a[n - len(y):] = y                         # auto-trim drops samples at the start
+        return dict(q=pd.array(np.round(a / QUANTUM), dtype="Int32"), summary=dict(e["summary"], n_trimmed=int(n - len(y))))
+
     def save_run(self, rid: str, name: str, settings: dict, results: Dict[str, object],
                  make_active=True, replace_same_name=True, by="") -> dict:
         """results: {channel: TraceResult or run_entry(...)}."""
@@ -322,6 +330,9 @@ class DataStore:
         run_id = f"run_{_short_id()}"
         cols, summary = {}, {}
         for ch, res in results.items():
+            if isinstance(res, dict) and "q" in res:      # from compact_entry
+                cols[ch], summary[ch] = res["q"], res["summary"]
+                continue
             e = res if isinstance(res, dict) else self.run_entry(res)
             a = np.full(n, np.nan)
             a[n - len(e["y"]):] = e["y"]          # auto-trim drops samples at the start
@@ -381,7 +392,8 @@ class DataStore:
         q = pd.read_parquet(self.root / run["file"], columns=cols)
         return q.astype("float64") * QUANTUM
 
-    def run_time(self, run: dict, t_raw: np.ndarray) -> np.ndarray:
+    @staticmethod
+    def run_time(run: dict, t_raw: np.ndarray) -> np.ndarray:
         s = run.get("settings", {})
         if s.get("rebuild_time"):
             return t_raw[0] + np.arange(len(t_raw)) / float(s.get("fs", 200.0))
