@@ -1,0 +1,1 @@
+"""Strain Gauge Filtering Lab."""

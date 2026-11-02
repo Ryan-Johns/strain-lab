@@ -1,0 +1,13 @@
+# Streamlit settings for the Strain Gauge Filtering Lab.
+# Sizes are in megabytes.
+
+[server]
+# Largest file you can upload (default 200).
+maxUploadSize = 2000
+
+# Largest chunk of data Streamlit sends to the browser at once, e.g. a big download or plot (default 200).
+maxMessageSize = 2000
+
+[client]
+# Hide Streamlit's developer menu and "Deploy" button.
+toolbarMode = "viewer"
